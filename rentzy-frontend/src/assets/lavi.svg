@@ -1,0 +1,15 @@
+<svg width="220" height="70" viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg">
+  <!-- Logo created by an AI assistant for Rentzy -->
+  <defs>
+    <style>
+      .rentzy-text { font-family: 'Montserrat', 'Verdana', sans-serif; font-size: 42px; fill: #333333; }
+    </style>
+  </defs>
+
+  <!-- Roofline Icon -->
+  <path d="M5 25 L45 5 L85 25" stroke="#00BFA6" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <text x="5" y="60" class="rentzy-text">
+    <tspan font-weight="700" fill="#00BFA6">Rent</tspan><tspan font-weight="500">zy</tspan>
+  </text>
+</svg>
