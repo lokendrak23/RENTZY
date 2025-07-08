@@ -1,8 +1,20 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom"; // <-- IMPORT useNavigate
-import { useAuth } from "../context/AuthContext"; // <-- IMPORT useAuth
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import ForgotPasswordModal from "../components/ForgotPasswordModal";
 import bgImage from "../assets/login-bg.jpg";
 import logoImage from "../assets/lavi.svg";
+
+const getHomePageByRole = (userRole) => {
+  switch (userRole) {
+    case 'tenant':
+      return '/tenant-home';
+    case 'homeowner':
+      return '/owner-home';
+    default:
+      return '/'; // fallback to main page
+  }
+};
 
 const LoginSignup = () => {
   const [email, setEmail] = useState("");
@@ -10,21 +22,35 @@ const LoginSignup = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState("");
-  const [userType, setUserType] = useState("tenant");
+  const [role, setRole] = useState("tenant");
   const [verificationCode, setVerificationCode] = useState("");
   const [sendingCode, setSendingCode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [errors, setErrors] = useState({});
+  
+  // New state for forgot password modal
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
-  // --- NEW: Initialize hooks ---
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  // UPDATED PASSWORD VALIDATION TO MATCH BACKEND
+  const validatePassword = (password) => {
+    return password.length >= 8 && 
+           /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])/.test(password);
+  };
+
   const sendVerificationCode = async () => {
-    // ... (This function is correct and does not need changes)
-    if (!email) {
-      alert("Please enter an email first.");
+    if (!email || !validateEmail(email)) {
+      alert("Please enter a valid email address first.");
       return;
     }
+
     try {
       setSendingCode(true);
       const res = await fetch("http://localhost:5000/send-verification-code", {
@@ -32,64 +58,115 @@ const LoginSignup = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+      
       const data = await res.json();
+      
       if (data.success) {
         alert("Verification code sent!");
+        setCodeSent(true);
       } else {
-        alert(data.message || "Failed to send code.");
+        alert(data.message || "Failed to send verification code.");
       }
-    } catch (err) {
-      alert("Error sending verification code.");
+    } catch (error) {
+      console.error("Error sending verification code:", error);
+      alert("Network error. Please try again.");
     } finally {
       setSendingCode(false);
     }
   };
 
-  // --- UPDATED: handleSubmit function ---
+  // UPDATED FORM VALIDATION TO MATCH BACKEND
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!email) {
+      newErrors.email = "Email is required";
+    } else if (!validateEmail(email)) {
+      newErrors.email = "Please enter a valid email address";
+    }
+
+    if (!password) {
+      newErrors.password = "Password is required";
+    }
+
+    if (!isLogin) {
+      if (!name) {
+        newErrors.name = "Name is required";
+      }
+      
+      // Updated password validation message to match backend requirements
+      if (!validatePassword(password)) {
+        newErrors.password = "Password must be at least 8 characters with uppercase, lowercase, number, and special character";
+      }
+      
+      if (!confirmPassword) {
+        newErrors.confirmPassword = "Please confirm your password";
+      } else if (password !== confirmPassword) {
+        newErrors.confirmPassword = "Passwords do not match";
+      }
+      
+      if (!verificationCode) {
+        newErrors.verificationCode = "Verification code is required";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async () => {
-    if ((isLogin && (!email || !password)) || (!isLogin && (!name || !email || !password || !confirmPassword || !verificationCode))) {
-      alert("Please fill in all required fields.");
-      return;
-    }
-
-    if (!isLogin && password !== confirmPassword) {
-      alert("Passwords do not match.");
-      return;
-    }
-
+    if (!validateForm()) return;
+  
     try {
       setLoading(true);
       const endpoint = isLogin ? "login" : "register";
       
-      // Create the correct body for each endpoint
       const body = isLogin
         ? { email, password }
-        : { email, password, name, userType, verificationCode };
-
+        : { 
+            email, 
+            password, 
+            confirmPassword,
+            name, 
+            role,
+            verificationCode 
+          };
+  
       const response = await fetch(`http://localhost:5000/${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify(body),
       });
-
+  
       const data = await response.json();
-
+  
       if (data.success) {
-        // On success, update the global auth state and redirect
-        login(data.user);
-        navigate('/');
+        login(data.user, data.accessToken);
+        
+        // Navigate based on user role
+        const homePage = getHomePageByRole(data.user.role);
+        navigate(homePage);
       } else {
-        alert(data.message || `${isLogin ? "Login" : "Signup"} failed.`);
+        alert(data.message || `${isLogin ? "Login" : "Registration"} failed.`);
       }
-    } catch (err) {
-      alert("Server error. Please try again.");
+    } catch (error) {
+      console.error(`${isLogin ? "Login" : "Registration"} error:`, error);
+      alert("Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleMode = () => {
+    setIsLogin(!isLogin);
+    setErrors({});
+    setCodeSent(false);
+  };
+
   return (
-    // ... (Your JSX is correct and does not need changes)
     <div
       className="relative min-h-screen bg-cover bg-center flex items-center justify-center px-4 p-6"
       style={{ backgroundImage: `url(${bgImage})` }}
@@ -100,35 +177,153 @@ const LoginSignup = () => {
 
       <div className="bg-white/80 backdrop-blur-md p-10 rounded-2xl shadow-2xl w-full max-w-md">
         <h1 className="text-3xl font-bold text-center text-blue-700 mb-6">
-          {isLogin ? "Login" : "Create Account"}
+          {isLogin ? "Welcome Back" : "Join Rentzy"}
         </h1>
 
         <div className="space-y-4 mb-6">
           {!isLogin && (
-            <>
-              <input type="text" placeholder="Full Name" className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={name} onChange={(e) => setName(e.target.value)} />
-              <div className="flex gap-2">
-                <input type="email" placeholder="Enter your email" className="flex-1 px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={email} onChange={(e) => setEmail(e.target.value)} />
-                <button onClick={sendVerificationCode} disabled={sendingCode} className="bg-blue-600 text-white px-4 rounded hover:bg-blue-700 disabled:opacity-50" > {sendingCode ? "Sending..." : "Send Code"} </button>
-              </div>
-              <input type="text" placeholder="Verification Code" className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} />
-              <select value={userType} onChange={(e) => setUserType(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" >
-                <option value="tenant">I am a Tenant</option>
-                <option value="homeowner">I am a Homeowner</option>
-              </select>
-            </>
+            <div>
+              <input 
+                type="text" 
+                placeholder="Full Name" 
+                className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.name ? 'border-red-500' : 'border-gray-300'
+                }`}
+                value={name} 
+                onChange={(e) => setName(e.target.value)} 
+              />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+            </div>
           )}
 
-          {isLogin && ( <input type="email" placeholder="Enter your email" className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={email} onChange={(e) => setEmail(e.target.value)} /> )}
-          <input type="password" placeholder="Enter your password" className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={password} onChange={(e) => setPassword(e.target.value)} />
-          {!isLogin && ( <input type="password" placeholder="Confirm your password" className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /> )}
+          <div>
+            {!isLogin ? (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <input 
+                    type="email" 
+                    placeholder="Enter your email" 
+                    className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.email ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                  />
+                </div>
+                <button 
+                  onClick={sendVerificationCode} 
+                  disabled={sendingCode || !email} 
+                  className="bg-blue-600 text-white px-4 rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {sendingCode ? "Sending..." : codeSent ? "Resend" : "Send Code"}
+                </button>
+              </div>
+            ) : (
+              <input 
+                type="email" 
+                placeholder="Enter your email" 
+                className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.email ? 'border-red-500' : 'border-gray-300'
+                }`}
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+              />
+            )}
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+          </div>
+
+          {!isLogin && (
+            <div>
+              <input 
+                type="text" 
+                placeholder="Verification Code" 
+                className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.verificationCode ? 'border-red-500' : 'border-gray-300'
+                }`}
+                value={verificationCode} 
+                onChange={(e) => setVerificationCode(e.target.value)} 
+              />
+              {errors.verificationCode && <p className="text-red-500 text-xs mt-1">{errors.verificationCode}</p>}
+            </div>
+          )}
+
+          {!isLogin && (
+            <select 
+              value={role} 
+              onChange={(e) => setRole(e.target.value)} 
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="tenant">I am a Tenant</option>
+              <option value="homeowner">I am a Homeowner</option>
+            </select>
+          )}
+
+          <div>
+            <input 
+              type="password" 
+              placeholder={isLogin ? "Enter your password" : "Password (min 8 chars: A-Z, a-z, 0-9, !@#$)"} 
+              className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.password ? 'border-red-500' : 'border-gray-300'
+              }`}
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+            />
+            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+          </div>
+
+          {!isLogin && (
+            <div>
+              <input 
+                type="password" 
+                placeholder="Confirm your password" 
+                className={`w-full px-4 py-3 border rounded-md text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                }`}
+                value={confirmPassword} 
+                onChange={(e) => setConfirmPassword(e.target.value)} 
+              />
+              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+            </div>
+          )}
         </div>
-        <button onClick={handleSubmit} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md transition duration-200 font-semibold shadow-md disabled:opacity-50" > {loading ? (isLogin ? "Logging in..." : "Signing up...") : isLogin ? "Login" : "Sign Up"} </button>
+
+        <button 
+          onClick={handleSubmit} 
+          disabled={loading || (!isLogin && !codeSent)} 
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md transition duration-200 font-semibold shadow-md disabled:opacity-50"
+        >
+          {loading ? (isLogin ? "Signing in..." : "Creating account...") : isLogin ? "Sign In" : "Create Account"}
+        </button>
+
+        {/* Forgot Password Link - Only show during login */}
+        {isLogin && (
+          <div className="text-center mt-4">
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors duration-200"
+            >
+              Forgot your password?
+            </button>
+          </div>
+        )}
+
         <p className="text-sm text-center text-gray-700 mt-5">
           {isLogin ? "New to Rentzy?" : "Already have an account?"}{" "}
-          <span onClick={() => setIsLogin(!isLogin)} className="text-blue-600 hover:underline cursor-pointer font-medium" > {isLogin ? "Create an account" : "Login"} </span>
+          <span 
+            onClick={toggleMode} 
+            className="text-blue-600 hover:underline cursor-pointer font-medium"
+          >
+            {isLogin ? "Create an account" : "Sign in"}
+          </span>
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal 
+        isVisible={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+      />
     </div>
   );
 };

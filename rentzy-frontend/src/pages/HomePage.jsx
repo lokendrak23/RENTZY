@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from '../context/AuthContext.jsx'; // Adjust path if needed
+import { useAuth } from '../context/AuthContext.jsx';
 
 // Import the specific homepages
 import GuestHomepage from './GuestHomepage.jsx';
@@ -7,10 +7,19 @@ import TenantHomepage from './TenantHomepage.jsx';
 import OwnerHomepage from './OwnerHomepage.jsx';
 
 const HomePage = () => {
-  const { user } = useAuth(); // Get user state from context
+  const { user, isAuthenticated, loading } = useAuth();
 
-  if (!user) {
-    // If no user is logged in, show the guest page
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // If no user is logged in, show the guest page
+  if (!isAuthenticated || !user) {
     return <GuestHomepage />;
   }
 
@@ -18,7 +27,7 @@ const HomePage = () => {
   switch (user.role) {
     case 'tenant':
       return <TenantHomepage />;
-    case 'home_owner':
+    case 'homeowner':
       return <OwnerHomepage />;
     default:
       // A fallback in case the role is something else

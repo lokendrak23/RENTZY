@@ -20,109 +20,150 @@ const Register = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // This useEffect is for providing live feedback to the user and works correctly.
+  // Real-time validation with debouncing - UPDATED TO MATCH BACKEND
   useEffect(() => {
-    const newErrors = {};
-    if (form.password && form.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters.";
-    } else if (form.password && !/[!@#$%^&*(),.?":{}|<>]/.test(form.password)) {
-      newErrors.password = "Password must include a special character.";
-    }
+    const timer = setTimeout(() => {
+      const pwd = form.password.trim();
+      const cpwd = form.confirmPassword.trim();
+      const newErrors = {};
 
-    if (form.confirmPassword && form.password !== form.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match.";
-    }
+      // Updated password validation to match backend requirements
+      if (pwd && pwd.length < 8) {
+        newErrors.password = "Password must be at least 8 characters.";
+      } else if (pwd && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])/.test(pwd)) {
+        newErrors.password = "Password must contain uppercase, lowercase, number, and special character.";
+      }
 
-    setErrors(newErrors);
-  }, [form.password, form.confirmPassword]);
+      // Confirm password validation
+      if (pwd && cpwd && pwd !== cpwd) {
+        newErrors.confirmPassword = "Passwords do not match.";
+      }
 
+      // Email validation
+      if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+        newErrors.email = "Please enter a valid email address.";
+      }
+
+      setErrors(newErrors);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [form.password, form.confirmPassword, form.email]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
   };
 
   const sendVerificationCode = async () => {
-    // This function remains unchanged.
-    if (!form.email) {
+    if (!form.email.trim()) {
       alert("Please enter an email first.");
       return;
     }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
     try {
       setSendingCode(true);
       const res = await fetch("http://localhost:5000/send-verification-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email }),
+        body: JSON.stringify({ email: form.email.trim() }),
       });
+      
       const data = await res.json();
+      
       if (data.success) {
         alert("Verification code sent!");
         setCodeSent(true);
       } else {
         alert(data.message || "Failed to send verification code.");
       }
-    } catch (err) {
-      alert("Error sending code.");
+    } catch (error) {
+      console.error("Error sending verification code:", error);
+      alert("Network error. Please try again.");
     } finally {
       setSendingCode(false);
     }
   };
 
-  // --- NEW: A dedicated, synchronous validation function ---
-  const validate = () => {
+  // UPDATED VALIDATION FUNCTION TO MATCH BACKEND
+  const validateForm = () => {
     const { name, email, password, confirmPassword, verificationCode } = form;
     const validationErrors = {};
 
-    if (!name || !email || !password || !confirmPassword || !verificationCode) {
-      alert("Please fill all fields.");
-      return false; // Validation fails
+    // Required fields
+    if (!name.trim()) validationErrors.name = "Name is required.";
+    if (!email.trim()) validationErrors.email = "Email is required.";
+    if (!password.trim()) validationErrors.password = "Password is required.";
+    if (!confirmPassword.trim()) validationErrors.confirmPassword = "Confirm password is required.";
+    if (!verificationCode.trim()) validationErrors.verificationCode = "Verification code is required.";
+
+    // Email format
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      validationErrors.email = "Please enter a valid email address.";
     }
-    if (password.length < 6) {
-      validationErrors.password = "Password must be at least 6 characters.";
-    } else if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-      validationErrors.password = "Password must include a special character.";
+
+    // Updated password strength validation to match backend
+    if (password && password.length < 8) {
+      validationErrors.password = "Password must be at least 8 characters.";
+    } else if (password && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>])/.test(password)) {
+      validationErrors.password = "Password must contain uppercase, lowercase, number, and special character.";
     }
-    if (password !== confirmPassword) {
+
+    // Password match
+    if (password && confirmPassword && password !== confirmPassword) {
       validationErrors.confirmPassword = "Passwords do not match.";
     }
 
     if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors); // Update the UI to show errors
-      return false; // Validation fails
+      setErrors(validationErrors);
+      return false;
     }
 
-    return true; // Validation passes
+    return true;
   };
 
-
   const handleRegister = async () => {
-    // --- UPDATED: Call the validate function first ---
-    if (!validate()) {
-      // If validation fails, immediately stop the function.
-      return;
-    }
+    setErrors({});
+    
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
     try {
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password.trim(),
+        confirmPassword: form.confirmPassword.trim(),
+        role: form.role,
+        verificationCode: form.verificationCode.trim()
+      };
+
       const res = await fetch("http://localhost:5000/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        alert("Signup successful! You will now be redirected.");
-        login(data.user);
-        setTimeout(() => {
-          navigate('/');
-        }, 1500);
+        alert("Registration successful! Welcome to Rentzy!");
+        login(data.user, data.accessToken);
+        navigate("/");
       } else {
-        alert(data.message || "Registration failed.");
+        alert(data.message || "Registration failed. Please try again.");
       }
-    } catch (err) {
-      alert("Server error.");
+    } catch (error) {
+      console.error("Registration error:", error);
+      alert("Network error. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -132,20 +173,56 @@ const Register = () => {
     <div className="max-w-md mx-auto bg-white p-8 shadow-md rounded-xl mt-10 space-y-4">
       <h2 className="text-2xl font-bold text-center">Register on Rentzy</h2>
 
-      <input type="text" name="name" placeholder="Full Name" className="w-full p-3 border rounded" value={form.name} onChange={handleChange} />
-
-      <div className="flex gap-2">
-        <input type="email" name="email" placeholder="Email" className="flex-grow p-3 border rounded" value={form.email} onChange={handleChange} />
-        <button onClick={sendVerificationCode} disabled={sendingCode} className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:opacity-50" > {sendingCode ? "Sending..." : "Send Code"} </button>
+      <div>
+        <input
+          name="name"
+          placeholder="Full Name"
+          className={`w-full p-3 border rounded ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+          value={form.name}
+          onChange={handleChange}
+        />
+        {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
       </div>
 
-      <input type="text" name="verificationCode" placeholder="Verification Code" className="w-full p-3 border rounded" value={form.verificationCode} onChange={handleChange} />
+      <div className="flex gap-2">
+        <div className="flex-grow">
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            className={`w-full p-3 border rounded ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+            value={form.email}
+            onChange={handleChange}
+          />
+          {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+        </div>
+        <button
+          onClick={sendVerificationCode}
+          disabled={sendingCode || !form.email}
+          className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {sendingCode ? "Sending…" : codeSent ? "Resend" : "Send Code"}
+        </button>
+      </div>
+
+      <div>
+        <input
+          name="verificationCode"
+          placeholder="Verification Code"
+          className={`w-full p-3 border rounded ${errors.verificationCode ? 'border-red-500' : 'border-gray-300'}`}
+          value={form.verificationCode}
+          onChange={handleChange}
+        />
+        {errors.verificationCode && <p className="text-red-500 text-xs mt-1">{errors.verificationCode}</p>}
+      </div>
 
       <div>
         <input
           type="password"
           name="password"
-          placeholder="Password"
+          placeholder="Password (min 8 chars with uppercase, lowercase, number, special char)"
+          autoCapitalize="off"
+          autoComplete="new-password"
           className={`w-full p-3 border rounded ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
           value={form.password}
           onChange={handleChange}
@@ -158,6 +235,8 @@ const Register = () => {
           type="password"
           name="confirmPassword"
           placeholder="Confirm Password"
+          autoCapitalize="off"
+          autoComplete="new-password"
           className={`w-full p-3 border rounded ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'}`}
           value={form.confirmPassword}
           onChange={handleChange}
@@ -177,10 +256,10 @@ const Register = () => {
 
       <button
         onClick={handleRegister}
-        disabled={isSubmitting}
+        disabled={isSubmitting || !codeSent}
         className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded font-semibold disabled:opacity-50"
       >
-        {isSubmitting ? 'Registering...' : 'Register'}
+        {isSubmitting ? "Creating Account…" : "Register"}
       </button>
     </div>
   );
